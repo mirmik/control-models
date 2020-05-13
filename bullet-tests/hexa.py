@@ -5,10 +5,14 @@ import zencad.libs.kinematic
 from zencad.libs.screw import screw
 import zencad.malgo
 
+import zencad.libs.bullet
+
 import math
 import time
 
 reference = assemble.unit()
+simulation = zencad.bullet.simulation(
+	gravity=(0,0,-50), plane=True, gui=False, scale_factor=10, substeps=20)
 
 
 class leg0(assemble.unit):
@@ -33,9 +37,9 @@ class leg1(assemble.unit):
 		super().__init__()
 		m = box(self.x, self.y , self.z, center=True).up(self.z/2)
 		self.add_shape(m)
-		self.add_shape(sphere(3).up(self.z))
+		#self.add_shape(sphere(3).up(self.z))
 
-		self.output = assemble.unit(location=up(self.z), parent=self)
+		self.output = assemble.unit([sphere(r=3)], location=up(self.z), parent=self)
 
 class body(assemble.unit):
 	h = 7
@@ -117,6 +121,18 @@ class hexapod:
 		self.in_reposition = [True] * 6
 		self.need_reposition = [True] * 6
 		self.on_ground = [False] * 6
+
+		self.rots0_servos = [ zencad.bullet.speed_controller(simulation=simulation, kunit=self.rots0[i]) for i in range(len(self.rots0)) ]
+		self.rots1_servos = [ zencad.bullet.speed_controller(simulation=simulation, kunit=self.rots1[i]) for i in range(len(self.rots1)) ]
+		self.rots2_servos = [ zencad.bullet.speed_controller(simulation=simulation, kunit=self.rots2[i]) for i in range(len(self.rots2)) ]
+
+		self.rots_all = self.rots0_servos + self.rots1_servos + self.rots2_servos
+		for r in self.rots_all: r.set_koeffs(ki=100, kp=30)
+
+		self.arms = [
+			#zencad.libs.kinematic.kinematic_chain(self.outs[i], startlink=self.body) for i in range(6)
+			zencad.libs.kinematic.kinematic_chain(self.outs[i]) for i in range(6)
+		]
 
 		self.lastgroup = None
 
@@ -212,7 +228,7 @@ class hexapod:
 						self.in_reposition[i] = False
 
 
-		#print("lgroup", self.lastgroup)
+		print("lgroup", self.lastgroup)
 		#print("need", self.need_reposition)
 		#print("in", self.in_reposition)
 
@@ -393,54 +409,57 @@ class hexapod:
 
 hexapod = hexapod()
 
-hexapod.body.relocate(translate(40,50) * rotateZ(deg(30)))
+#hexapod.body.relocate(translate(40,50,20) * rotateZ(deg(30)))
+hexapod.body.relocate(translate(0,0,20))
 
 
-start_time = time.time()
-lasttime = start_time
+simulation.add_assemble(hexapod.body)
+
+
 def animate(wdg):
-	global lasttime
-	curtime = time.time()
-	t = curtime - start_time
-	delta = curtime-lasttime
-	lasttime = curtime
 
-	if delta > 0.1:
-		delta = 0.05
+	#S = math.sin(wdg.time) * 10
 
-	if t < 1:
-		return
+	def eval_error(idx, tgt):
+		target = vector3(tgt)
+		current = hexapod.body.global_location.inverse() * hexapod.outs[idx].global_location
+		error = target - current.translation() 
+		return error
 
-	#hexapod.eval_body_control(delta, time.time())
-	#hexapod.eval_legs_control(delta, time.time())
-	#hexapod.eval_speeds()	
-	#hexapod.apply_speeds(delta)	
-	#hexapod.grounding()
-	#hexapod.body.location_update()
-	#hexapod.eval_body_position(delta)
-	#hexapod.body.location_update()
+	Z=-3
+	
+	base_targets = [
+		point3(-25,0,Z),
+		point3(-20,-20,Z),
+		point3(-20,20,Z),
+		point3(20,-20,Z),
+		point3(20,20,Z),
+		point3(25,0,Z)
+	]
+	targets = list(base_targets)
+
+	A=20
+
+	targets[0] = targets[0] + math.sin(wdg.time*2)*vector3(0,0,1)*A
+	targets[1] = targets[1] + math.sin(wdg.time*2)*vector3(0,0,1)*A
+	targets[2] = targets[2] + math.sin(wdg.time*2)*vector3(0,0,1)*A
 #
-	#eye = point3(*hexapod.body.global_location.translation())
-	#center = point3(*hexapod.body.global_location.translation())
-	#eye.x = -200
-	#eye.z = 00
-#
-	#center.z = 0
+	targets[3] = targets[3] + math.sin(wdg.time*2)*vector3(0,0,1)*A
+	targets[4] = targets[4] + math.sin(wdg.time*2)*vector3(0,0,1)*A
+	targets[5] = targets[5] + math.sin(wdg.time*2)*vector3(0,0,1)*A
 
-	ch = zencad.libs.kinematic.kinematic_chain(hexapod.outs[0])
-	#print(ch.sensivity())
-	d = ch.decompose_linear(vec=(0,0,math.sin(wdg.time)*10), use_base_frame=True)
+	errs = [ eval_error(i, targets[i]) for i in range(6) ]
 
-	print(ch.kunit(2).coord + d[2]*delta)
+	K=10
+	d = [ hexapod.arms[i].decompose_linear(errs[i] * K, use_base_frame=True) for i in range(6) ]
 
-	ch.kunit(0).set_coord(ch.kunit(0).coord + d[0]*delta)
-	ch.kunit(1).set_coord(ch.kunit(1).coord + d[1]*delta)
-	ch.kunit(2).set_coord(ch.kunit(2).coord + d[2]*delta)
+	for i in range(6):
+		hexapod.rots0_servos[i].set_target(d[i][0])
+		hexapod.rots1_servos[i].set_target(d[i][1])
+		hexapod.rots2_servos[i].set_target(d[i][2])
 
-	hexapod.body.location_update()
+	for r in hexapod.rots_all:
+		r.serve(wdg.delta)
+	simulation.step()
 
-	#wdg.view.set_center(center)
-	#wdg.view.set_eye(eye)
-
-disp(hexapod.body)
 show(animate=animate)

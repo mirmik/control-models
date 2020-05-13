@@ -9,6 +9,7 @@ import time
 from micar import MODEL
 #from kran import MODEL
 
+#lazy.diag = True
 
 simulation = zencad.libs.bullet.pybullet_simulation(gravity=(0,0,0), plane=False)
 
@@ -57,7 +58,7 @@ a3 = simulation.add_body(model.rotateX(deg(90)), location=translate(STEP*2,STEP 
 a4 = simulation.add_body(model.rotateX(deg(90)).rotateZ(deg(90)), location=translate(STEP*3,STEP + W,0))
 a5 = simulation.add_body(model.rotateY(deg(90)).rotateZ(deg(90)), location=translate(STEP*4,STEP + W,0))
 a6 = simulation.add_body(model.rotateY(deg(90)).rotateZ(deg(90)).rotateX(deg(90)), location=translate(STEP*5,STEP + W,0))
-print()
+
 a1 = simulation.add_body(model, translate(0,W,0))
 a2 = simulation.add_body(model.rotateY(deg(90)), location=translate(STEP,W,0))
 a3 = simulation.add_body(model.rotateX(deg(90)), location=translate(STEP*2,W,0))
@@ -86,7 +87,7 @@ a3 = simulation.add_body(model.rotateX(deg(90)), location=translate(STEP*2,STEP,
 a4 = simulation.add_body(model.rotateX(deg(90)).rotateZ(deg(90)), location=translate(STEP*3,STEP,0))
 a5 = simulation.add_body(model.rotateY(deg(90)).rotateZ(deg(90)), location=translate(STEP*4,STEP,0))
 a6 = simulation.add_body(model.rotateY(deg(90)).rotateZ(deg(90)).rotateX(deg(90)), location=translate(STEP*5,STEP,0))
-print()
+
 a1 = simulation.add_body(model, translate(0,0,0))
 a2 = simulation.add_body(model.rotateY(deg(90)), location=translate(STEP,0,0))
 a3 = simulation.add_body(model.rotateX(deg(90)), location=translate(STEP*2,0,0))
