@@ -7,18 +7,13 @@ import zencad.malgo
 
 import zencad.libs.bullet
 
-import numpy
 import math
 import time
 import pybullet
 
-import threading
-
-TIMESTEP = 1/240
-
 reference = assemble.unit()
 simulation = zencad.bullet.simulation(
-	gravity=(0,0,-50), plane=True, gui=False, scale_factor=10, time_step=TIMESTEP, substeps=1)
+	gravity=(0,0,-50), plane=True, gui=False, scale_factor=10, substeps=0)
 
 class leg_controller:
 	def __init__(self, hexapod, index, reference):
@@ -29,11 +24,9 @@ class leg_controller:
 		self.reference_position = vector3(reference)
 		self.grounded_target_position=self.reference_position + vector3(0,0,-10)
 		self.target_position = self.reference_position
-		self.filtered_sigs = numpy.array([float(0),0,0])
 
 		self.bcmode = True
 		self.control_mode = "velocity"
-		self.forwpre = 13
 
 		self.velocity = vector3(0,0,0)
 
@@ -48,7 +41,7 @@ class leg_controller:
 		KSI1=4
 		KSI2=1
 		M=1
-		F=0.16
+		F=0.2
 
 		#self.servos[0].set_regs(
 		#	pidspd=zencad.bullet.pid.by_params(T=T1, ksi=KSI1, M=M),
@@ -63,36 +56,25 @@ class leg_controller:
 		#	pidpos=zencad.bullet.pid.by_params(T=T2, ksi=KSI2, M=1),
 		#	filt=F)
 
-		#KP01=100
-		#KP02=33
-		#KP11=100
-		#KP12=33
-		#KP21=100
-		#KP22=33
-
-		KP01=80
-		KP02=30
-		KP11=100
-		KP12=30
-		KP21=120
-		KP22=35
-		MAXF = 350
+		KP01=30
+		KP02=20
+		KP11=80
+		KP12=25
+		KP21=80
+		KP22=25
 
 		self.servos[0].set_regs(
 			pidspd=zencad.bullet.pid(kp=KP01,ki=0),
 			pidpos=zencad.bullet.pid(kp=KP02,ki=0), 
-			filt=F,
-			maxforce=MAXF)
+			filt=F)
 		self.servos[1].set_regs(
 			pidspd=zencad.bullet.pid(kp=KP11,ki=0),
 			pidpos=zencad.bullet.pid(kp=KP12,ki=0), 
-			filt=F,
-			maxforce=MAXF)
+			filt=F)
 		self.servos[2].set_regs(
 			pidspd=zencad.bullet.pid(kp=KP21,ki=0),
 			pidpos=zencad.bullet.pid(kp=KP22,ki=0),
-			filt=F,
-			maxforce=MAXF)
+			filt=F)
 #
 		#KI0 = 10
 		#KIF0=0
@@ -164,7 +146,7 @@ class leg_controller:
 
 	def go_pre_position(self):
 		self.control_mode = "position"
-		self.target_position = self.reference_position + vector3(0,10,0) + vector3(0,self.forwpre,0)
+		self.target_position = self.reference_position + vector3(0,10,0)
 		self.bcmode = False	
 
 	def go_home_position(self):
@@ -175,7 +157,7 @@ class leg_controller:
 	def go_ground(self):
 		self.control_mode = "position"
 		z = hexapod.body.global_location.translation().z
-		self.target_position = self.reference_position + vector3(0,0,-z) + vector3(0,self.forwpre,0)
+		self.target_position = self.reference_position + vector3(0,0,-z) + vector3(0,13,0)
 		self.bcmode = False	
 
 	def set_velocity(self, vec):
@@ -187,41 +169,32 @@ class leg_controller:
 		return otgt
 
 	def eval_position_control(self):
-		K = 5
+		K = 1.5
 		error = self.target_position - self.current_position()
+		print(error)
 		sig = error * K
 		self.set_velocity(sig)
 
 
 	def serve(self, delta):
 		#self.set_velocity((0,0,10))
-
-		a=time.time()
 		if self.control_mode=="position":
 			self.eval_position_control()		
 		elif self.control_mode=="velocity":
 			pass
 			#self.eval_velocity_control()
 
-		b=time.time()
-		sigs = self.chain.decompose_linear(
-			self.velocity, 
-			use_base_frame=True)
-		self.filtered_sigs += (sigs - self.filtered_sigs)
+		sigs = self.chain.decompose_linear(self.velocity, use_base_frame=True)
 
-		c=time.time()
 		#print(sigs)
 
-		self.servos[0].set_speed2(self.filtered_sigs[0])
-		self.servos[1].set_speed2(self.filtered_sigs[1])
-		self.servos[2].set_speed2(self.filtered_sigs[2])
-		d=time.time()
-
-		#print(b-a, c-b, d-c)
+		self.servos[0].set_speed2(sigs[0])
+		self.servos[1].set_speed2(sigs[1])
+		self.servos[2].set_speed2(sigs[2])
 
 class leg0(assemble.unit):
 	z = 26
-	y = 2
+	y = 1
 	x = 1
 
 	def __init__(self):
@@ -234,7 +207,7 @@ class leg0(assemble.unit):
 
 class leg1(assemble.unit):
 	z = 30
-	y = 2
+	y = 1
 	x = 1
 
 	def __init__(self):
@@ -246,7 +219,7 @@ class leg1(assemble.unit):
 		self.output = assemble.unit([m], location=up(self.z), parent=self)
 
 class body(assemble.unit):
-	h = 3
+	h = 7
 	r = 30
 
 	def __init__(self):
@@ -254,9 +227,6 @@ class body(assemble.unit):
 		m = ngon(n=6, r=self.r).scaleX(0.6)
 		verts = m.vertices()
 		m = ngon(n=6, r=self.r).scaleX(0.6).extrude(self.h)
-
-		#m = m + sphere(2).forw(self.r-4).left(3).up(3)
-		#m = m + sphere(2).forw(self.r-4).right(3).up(3)
 
 		self.add(m)
 
@@ -313,9 +283,9 @@ class hexapod:
 			r.init()
 
 	def init_leg_controllers(self):
-		A = 40
-		B = 27
-		C = 37
+		A = 35
+		B = 25
+		C = 40
 		Z = 0
 		self.leg_controllers = [
 			leg_controller(self, 0, (-A,0,Z)),
@@ -331,9 +301,6 @@ class hexapod:
 		
 		self.group1_ctrs=[self.leg_controllers[2], self.leg_controllers[5], self.leg_controllers[1]]
 		self.group2_ctrs=[self.leg_controllers[4], self.leg_controllers[0], self.leg_controllers[3]]
-
-		self.left_ctrs[0].forwpre=23
-		self.right_ctrs[0].forwpre=23
 
 	def has_contact_with_ground(self):
 		ret = []
@@ -376,10 +343,10 @@ class hexapod:
 		#	KD = 0.1
 		#	self.body_position_error_integral += errsig
 		#else:
-		K = 1
+		K = 0.6
 		KI = 0
 		
-		KD = 0
+		KD = 0.2
 		self.body_position_error_integral=screw()
 		errsig = errsig * K + self.body_position_error_integral * KI + self.errspd * KD
 
@@ -478,7 +445,7 @@ class hexapod:
 	def body_trajectory_control(self, delta):
 		#pass
 		#if time.time() - self.grounded_time > 1.5:
-		self.body_control_target = self.body_control_target * screw(lin=(0,50,0), ang=(0,0,0.1*math.sin(time.time()/20))).scale(delta).to_trans()
+		self.body_control_target = self.body_control_target * screw(lin=(0,4,0), ang=(0,0,0)).scale(delta).to_trans()
 
 	def activate_home_program(self):
 		self.left_ctrs[0].set_position_target((-25,40,0))
@@ -489,7 +456,7 @@ class hexapod:
 		self.right_ctrs[1].set_position_target((35,0,0))
 		self.right_ctrs[2].set_position_target((25,-40,0))
 
-	def serve(self, state, iteration):
+	def serve(self, state):
 		#on_ground = not self.has_contact_with_ground()
 		#if on_ground and self.last_on_ground == False:
 		#	self.grounded_time = time.time()
@@ -507,16 +474,11 @@ class hexapod:
 		#self.left_ctrs[1].servos[1].set_speed_target(1)
 		#print(self.left_ctrs[1].servos[1].speed())
 
-		if iteration%4 ==0:
-			a = time.time()
-			for s in self.leg_controllers:
-				s.serve(state.delta)
+		for s in self.leg_controllers:
+			s.serve(state.delta)
 
-		b = time.time()
 		for r in self.rots_all:
 			r.serve(state.delta)
-		
-		c = time.time()
 			#r.serve_spd_only(state.delta)
 
 		#self.last_on_ground = on_ground
@@ -528,93 +490,56 @@ hexapod.body.relocate(translate(0,0,0))
 hexapod.simulation_controller = simulation.add_assemble(hexapod.body, fixed_base=False)
 hexapod.init_servos()
 
-P = 0.17
 
-T1=1*P # Коррекция
-T2=0.6*P # Опускание
-T12=0.7*P # совместное управление
+T1=2.7
+T12=0.7
+T2=1.5
+def animate(state):
+	#print(hexapod.outs[0].global_location)
 
-state = zencad.animate.AnimationState(None)
-state.start_time = 0
-state.timestamp(0)
-
-TOKEN = False
-
-def foo(iteration):
-
-	u = time.time()
-	if state.loctime < 1:
+	if state.loctime < 2:
 		hexapod.activate_home_program()
 
-	elif state.loctime < 3:
+	elif state.loctime < 5:
 		for s in hexapod.leg_controllers:
 			s.bcmode=True
 		hexapod.activate_body_control0()
-	
+
 	else:
-		ltime = (state.loctime - 5) % (T1*2 + T2*2 + 2*T12)
-		if ltime < T1:
+		time = (state.loctime - 5) % (T1*2 + T2*2 + 2*T12)
+		if time < T1:
 			for c in hexapod.group1_ctrs: c.bcmode = True
 			for c in hexapod.group2_ctrs: c.go_pre_position()
 			hexapod.activate_body_control0()
 		
-		elif ltime < T2+T1:
+		elif time < T2+T1:
 			for c in hexapod.group1_ctrs: c.bcmode = True
 			for c in hexapod.group2_ctrs: c.go_ground()
 			hexapod.activate_body_control0()
-	
-		elif ltime < T1+T2+T12:
+
+		elif time < T1+T2+T12:
 			for c in hexapod.group1_ctrs: c.bcmode = True
 			for c in hexapod.group2_ctrs: c.bcmode = True
 			hexapod.activate_body_control0()
 		
-		elif ltime < T1*2+T2+T12:
+		elif time < T1*2+T2+T12:
 			for c in hexapod.group1_ctrs: c.go_pre_position()
 			for c in hexapod.group2_ctrs: c.bcmode = True
 			hexapod.activate_body_control0()
 		
-		elif ltime < T2*2+T1*2+T12:
+		elif time < T2*2+T1*2+T12:
 			for c in hexapod.group1_ctrs: c.go_ground()
 			for c in hexapod.group2_ctrs: c.bcmode = True
 			hexapod.activate_body_control0()
-	
-		elif ltime < T1*2+T2*2+T12*2:
+
+		elif time < T1*2+T2*2+T12*2:
 			for c in hexapod.group1_ctrs: c.bcmode = True
 			for c in hexapod.group2_ctrs: c.bcmode = True
 			hexapod.activate_body_control0()
-	
+
 		hexapod.body_trajectory_control(state.delta)
 
-	a = time.time()
-	if iteration % 1 == 0:
-		hexapod.serve(state, iteration)
-
-	b = time.time()
+	hexapod.serve(state)
 	simulation.step()
 
-	c = time.time()
-
-	print(a-u, b-a, c-b)
-
-def bar():
-	iteration = 0
-	while True:
-		iteration += 1
-		if TOKEN:
-			return
-		state.timestamp(state.time + TIMESTEP)
-		foo(iteration)
-
-		print(state.time)
-
-thr = threading.Thread(target=bar)
-thr.start()
-
-def close_handle():
-	global TOKEN 
-	TOKEN = True
-
-def animate(state):
-	pass
-
-show(animate=animate, close_handle=close_handle)
+show(animate=animate)

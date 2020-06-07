@@ -7,7 +7,6 @@ import zencad.malgo
 
 import zencad.libs.bullet
 
-import numpy
 import math
 import time
 import pybullet
@@ -29,11 +28,9 @@ class leg_controller:
 		self.reference_position = vector3(reference)
 		self.grounded_target_position=self.reference_position + vector3(0,0,-10)
 		self.target_position = self.reference_position
-		self.filtered_sigs = numpy.array([float(0),0,0])
 
 		self.bcmode = True
 		self.control_mode = "velocity"
-		self.forwpre = 13
 
 		self.velocity = vector3(0,0,0)
 
@@ -48,7 +45,7 @@ class leg_controller:
 		KSI1=4
 		KSI2=1
 		M=1
-		F=0.16
+		F=0.2
 
 		#self.servos[0].set_regs(
 		#	pidspd=zencad.bullet.pid.by_params(T=T1, ksi=KSI1, M=M),
@@ -72,27 +69,23 @@ class leg_controller:
 
 		KP01=80
 		KP02=30
-		KP11=100
-		KP12=30
-		KP21=120
-		KP22=35
-		MAXF = 350
+		KP11=115
+		KP12=35
+		KP21=140
+		KP22=40
 
 		self.servos[0].set_regs(
 			pidspd=zencad.bullet.pid(kp=KP01,ki=0),
 			pidpos=zencad.bullet.pid(kp=KP02,ki=0), 
-			filt=F,
-			maxforce=MAXF)
+			filt=F)
 		self.servos[1].set_regs(
 			pidspd=zencad.bullet.pid(kp=KP11,ki=0),
 			pidpos=zencad.bullet.pid(kp=KP12,ki=0), 
-			filt=F,
-			maxforce=MAXF)
+			filt=F)
 		self.servos[2].set_regs(
 			pidspd=zencad.bullet.pid(kp=KP21,ki=0),
 			pidpos=zencad.bullet.pid(kp=KP22,ki=0),
-			filt=F,
-			maxforce=MAXF)
+			filt=F)
 #
 		#KI0 = 10
 		#KIF0=0
@@ -164,7 +157,7 @@ class leg_controller:
 
 	def go_pre_position(self):
 		self.control_mode = "position"
-		self.target_position = self.reference_position + vector3(0,10,0) + vector3(0,self.forwpre,0)
+		self.target_position = self.reference_position + vector3(0,10,0) + vector3(0,13,0)
 		self.bcmode = False	
 
 	def go_home_position(self):
@@ -175,7 +168,7 @@ class leg_controller:
 	def go_ground(self):
 		self.control_mode = "position"
 		z = hexapod.body.global_location.translation().z
-		self.target_position = self.reference_position + vector3(0,0,-z) + vector3(0,self.forwpre,0)
+		self.target_position = self.reference_position + vector3(0,0,-z) + vector3(0,13,0)
 		self.bcmode = False	
 
 	def set_velocity(self, vec):
@@ -187,7 +180,7 @@ class leg_controller:
 		return otgt
 
 	def eval_position_control(self):
-		K = 5
+		K = 4
 		error = self.target_position - self.current_position()
 		sig = error * K
 		self.set_velocity(sig)
@@ -204,17 +197,14 @@ class leg_controller:
 			#self.eval_velocity_control()
 
 		b=time.time()
-		sigs = self.chain.decompose_linear(
-			self.velocity, 
-			use_base_frame=True)
-		self.filtered_sigs += (sigs - self.filtered_sigs)
+		sigs = self.chain.decompose_linear(self.velocity, use_base_frame=True)
 
 		c=time.time()
 		#print(sigs)
 
-		self.servos[0].set_speed2(self.filtered_sigs[0])
-		self.servos[1].set_speed2(self.filtered_sigs[1])
-		self.servos[2].set_speed2(self.filtered_sigs[2])
+		self.servos[0].set_speed2(sigs[0])
+		self.servos[1].set_speed2(sigs[1])
+		self.servos[2].set_speed2(sigs[2])
 		d=time.time()
 
 		#print(b-a, c-b, d-c)
@@ -254,9 +244,6 @@ class body(assemble.unit):
 		m = ngon(n=6, r=self.r).scaleX(0.6)
 		verts = m.vertices()
 		m = ngon(n=6, r=self.r).scaleX(0.6).extrude(self.h)
-
-		#m = m + sphere(2).forw(self.r-4).left(3).up(3)
-		#m = m + sphere(2).forw(self.r-4).right(3).up(3)
 
 		self.add(m)
 
@@ -332,9 +319,6 @@ class hexapod:
 		self.group1_ctrs=[self.leg_controllers[2], self.leg_controllers[5], self.leg_controllers[1]]
 		self.group2_ctrs=[self.leg_controllers[4], self.leg_controllers[0], self.leg_controllers[3]]
 
-		self.left_ctrs[0].forwpre=23
-		self.right_ctrs[0].forwpre=23
-
 	def has_contact_with_ground(self):
 		ret = []
 		for i in range(hexapod.simulation_controller.links_number):
@@ -376,10 +360,10 @@ class hexapod:
 		#	KD = 0.1
 		#	self.body_position_error_integral += errsig
 		#else:
-		K = 1
+		K = 0.6
 		KI = 0
 		
-		KD = 0
+		KD = 0.2
 		self.body_position_error_integral=screw()
 		errsig = errsig * K + self.body_position_error_integral * KI + self.errspd * KD
 
@@ -478,7 +462,7 @@ class hexapod:
 	def body_trajectory_control(self, delta):
 		#pass
 		#if time.time() - self.grounded_time > 1.5:
-		self.body_control_target = self.body_control_target * screw(lin=(0,50,0), ang=(0,0,0.1*math.sin(time.time()/20))).scale(delta).to_trans()
+		self.body_control_target = self.body_control_target * screw(lin=(0,12,0), ang=(0,0,0)).scale(delta).to_trans()
 
 	def activate_home_program(self):
 		self.left_ctrs[0].set_position_target((-25,40,0))
@@ -507,7 +491,7 @@ class hexapod:
 		#self.left_ctrs[1].servos[1].set_speed_target(1)
 		#print(self.left_ctrs[1].servos[1].speed())
 
-		if iteration%4 ==0:
+		if iteration%8 ==0:
 			a = time.time()
 			for s in self.leg_controllers:
 				s.serve(state.delta)
@@ -528,11 +512,10 @@ hexapod.body.relocate(translate(0,0,0))
 hexapod.simulation_controller = simulation.add_assemble(hexapod.body, fixed_base=False)
 hexapod.init_servos()
 
-P = 0.17
 
-T1=1*P # Коррекция
-T2=0.6*P # Опускание
-T12=0.7*P # совместное управление
+T1=1 # Коррекция
+T2=0.6 # Опускание
+T12=0.7 # совместное управление
 
 state = zencad.animate.AnimationState(None)
 state.start_time = 0
