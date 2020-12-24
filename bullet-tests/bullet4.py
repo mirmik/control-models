@@ -8,7 +8,7 @@ from zencad import *
 import time
 
 
-simulation = zencad.libs.bullet.pybullet_simulation(gravity=(0,0,-1000), plane=True)
+simulation = zencad.libs.bullet.simulation(scale_factor=1, gravity=(0,0,-1000), plane=True)
 #simulation.set_plane_friction(1)
 
 model=cylinder(r=30,h=5).rotX(deg(80)).up(30)
