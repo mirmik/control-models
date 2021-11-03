@@ -5,6 +5,7 @@ import zencad.libs.kinematic
 from zencad.libs.screw import screw
 import zencad.malgo
 
+import zencad.bullet
 import zencad.libs.bullet
 
 import math
@@ -16,7 +17,7 @@ import threading
 TIMESTEP = 1/240
 
 reference = assemble.unit()
-simulation = zencad.bullet.simulation(
+simulation = zencad.libs.bullet.simulation(
 	gravity=(0,0,-50), plane=True, gui=False, scale_factor=10, time_step=TIMESTEP, substeps=1)
 
 class leg_controller:

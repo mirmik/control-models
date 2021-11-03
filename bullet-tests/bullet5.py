@@ -9,7 +9,7 @@ import time
 import pybullet
 
 
-simulation = zencad.libs.bullet.pybullet_simulation(
+simulation = zencad.libs.bullet.simulation(
 	gravity=(0,0,-10), scale_factor=10, plane=True, gui=False)
 #simulation.set_plane_friction(1)
 
